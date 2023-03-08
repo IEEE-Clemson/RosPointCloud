@@ -6,6 +6,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <pcl/common/common.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -37,6 +38,8 @@ enum class WallType
 
 using PointT = pcl::PointXYZRGB;
 using namespace std::chrono_literals;
+
+constexpr bool use_seperate_transform = false;
 std::string out_cloud_name = "/mycloud";
 std::string in_cloud_name = "/camera/depth/color/points";
 
@@ -96,17 +99,26 @@ private:
   {
     if (!hasInitialized)
     {
+      if(use_seperate_transform) {
       geometry_msgs::msg::TransformStamped tmsg;
-      tmsg.header.stamp = this->get_clock()->now();
-      tmsg.transform.translation.x = -0.5;
-      tmsg.child_frame_id = "mytransform";
-      tmsg.header.frame_id = "map";
-      tfBroad->sendTransform(tmsg);
+        tmsg.header.stamp = this->get_clock()->now();
+        tmsg.transform.translation.x = -0.5;
+        tmsg.child_frame_id = "mytransform";
+        tmsg.header.frame_id = "map";
+        tfBroad->sendTransform(tmsg);
 
-      tmsg.transform.translation.x = 0.0;
-      tmsg.child_frame_id = "camera_link";
-      tmsg.header.frame_id = "mytransform";
-      tfBroad->sendTransform(tmsg);
+        tmsg.transform.translation.x = 0.0;
+        tmsg.child_frame_id = "camera_link";
+        tmsg.header.frame_id = "mytransform";
+        tfBroad->sendTransform(tmsg);
+      } else {
+        geometry_msgs::msg::TransformStamped tmsg;
+        tmsg.header.stamp = this->get_clock()->now();
+        tmsg.transform.translation.x = -0.5;
+        tmsg.child_frame_id = "camera_link";
+        tmsg.header.frame_id = "map";
+        tfBroad->sendTransform(tmsg);
+      }
       hasInitialized = true;
     }
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
@@ -248,31 +260,46 @@ private:
         //std::cout << "Point: " << point << " " << "Theta: " << theta << "Wall A: " << (int) wallA << "Wall B: " <<(int)wallB <<  std::endl;
         Eigen::Quaterniond new_rot (Eigen::AngleAxisd(new_angle, Eigen::Vector3d{0, 0, 1}));
         auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.z(), 0.0};
-        geometry_msgs::msg::TransformStamped tmsg;
-        tmsg.header.stamp = this->get_clock()->now();
-        tmsg.header.frame_id = "/mytransform";
-        tmsg.child_frame_id = "/camera_link";
-        tmsg.transform.translation.x = -rot_point.y();
-        tmsg.transform.translation.y = rot_point.x();
-        tmsg.transform.translation.z = 0.0;
-        tmsg.transform.rotation.w = new_rot.w();
-        tmsg.transform.rotation.x = new_rot.x();
-        tmsg.transform.rotation.y = new_rot.y();
-        tmsg.transform.rotation.z = new_rot.z();
-        tfBroad->sendTransform(tmsg);
+        if(use_seperate_transform) {
+          geometry_msgs::msg::TransformStamped tmsg;
+          tmsg.header.stamp = this->get_clock()->now();
+          tmsg.header.frame_id = "/mytransform";
+          tmsg.child_frame_id = "/camera_link";
+          tmsg.transform.translation.x = -rot_point.y();
+          tmsg.transform.translation.y = rot_point.x();
+          tmsg.transform.translation.z = 0.0;
+          tmsg.transform.rotation.w = new_rot.w();
+          tmsg.transform.rotation.x = new_rot.x();
+          tmsg.transform.rotation.y = new_rot.y();
+          tmsg.transform.rotation.z = new_rot.z();
+          tfBroad->sendTransform(tmsg);
 
-        geometry_msgs::msg::TransformStamped tmsg2;
-        // tmsg.header.stamp = this->get_clock()->now();
-        tmsg.header.frame_id = "/map";
-        tmsg.child_frame_id = "/mytransform";
-        tmsg.transform.translation.x = best_guess.x();
-        tmsg.transform.translation.y = best_guess.z();
-        tmsg.transform.translation.z = 0.0;
-        tmsg.transform.rotation.w = 1.0;
-        tmsg.transform.rotation.x = 0.0;
-        tmsg.transform.rotation.y = 0.0;
-        tmsg.transform.rotation.z = 0.0;
-        tfBroad->sendTransform(tmsg);
+          geometry_msgs::msg::TransformStamped tmsg2;
+          // tmsg.header.stamp = this->get_clock()->now();
+          tmsg.header.frame_id = "/map";
+          tmsg.child_frame_id = "/mytransform";
+          tmsg.transform.translation.x = best_guess.x();
+          tmsg.transform.translation.y = best_guess.z();
+          tmsg.transform.translation.z = 0.0;
+          tmsg.transform.rotation.w = 1.0;
+          tmsg.transform.rotation.x = 0.0;
+          tmsg.transform.rotation.y = 0.0;
+          tmsg.transform.rotation.z = 0.0;
+          tfBroad->sendTransform(tmsg);
+        } else {
+          geometry_msgs::msg::TransformStamped tmsg;
+          tmsg.header.stamp = this->get_clock()->now();
+          tmsg.header.frame_id = "/map";
+          tmsg.child_frame_id = "/camera_link";
+          tmsg.transform.translation.x = -rot_point.y() + best_guess.x();
+          tmsg.transform.translation.y = rot_point.x() + best_guess.z();
+          tmsg.transform.translation.z = 0.0;
+          tmsg.transform.rotation.w = new_rot.w();
+          tmsg.transform.rotation.x = new_rot.x();
+          tmsg.transform.rotation.y = new_rot.y();
+          tmsg.transform.rotation.z = new_rot.z();
+          tfBroad->sendTransform(tmsg);
+        }
       }
     }
     // PUBLISHING
@@ -344,6 +371,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc_subscriber;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odomPublisher;
   size_t count_;
   bool hasInitialized;
   std::vector<Eigen::Vector3d> corners = {

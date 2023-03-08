@@ -34,14 +34,19 @@ enum class WallType
   EAST,
   SOUTH,
   WEST,
+  NONE,
 };
 
 using PointT = pcl::PointXYZRGB;
 using namespace std::chrono_literals;
 
 constexpr bool use_seperate_transform = false;
+constexpr bool publish_transform = false;
 std::string out_cloud_name = "/mycloud";
 std::string in_cloud_name = "/camera/depth/color/points";
+std::string target_frame = "camera_link";
+std::string map_frame = "map";
+std::string odom_name = "/pcl/odom";
 
 
 
@@ -53,6 +58,7 @@ public:
   {
     hasInitialized = false;
     publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(out_cloud_name, 10);
+    odomPublisher = this->create_publisher<nav_msgs::msg::Odometry>(odom_name, 10);
     tfBroad = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(in_cloud_name,
@@ -68,7 +74,8 @@ private:
   {
     Eigen::Vector3f norm = coeff.head<3>();
     float d = coeff[3];
-    auto guess = tf_buffer->lookupTransform("camera_link", "map", tf2::TimePointZero);
+    if(!tf_buffer->canTransform(target_frame, map_frame, tf2::TimePointZero)) return WallType::NONE;
+    auto guess = tf_buffer->lookupTransform(target_frame, map_frame, tf2::TimePointZero);
     Eigen::Quaternionf rot_guess(guess.transform.rotation.w,
                                  guess.transform.rotation.x,
                                  guess.transform.rotation.y,
@@ -97,30 +104,45 @@ private:
 
   void pc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
   {
-    if (!hasInitialized)
+    if (!hasInitialized && publish_transform)
     {
       if(use_seperate_transform) {
       geometry_msgs::msg::TransformStamped tmsg;
         tmsg.header.stamp = this->get_clock()->now();
         tmsg.transform.translation.x = -0.5;
         tmsg.child_frame_id = "mytransform";
-        tmsg.header.frame_id = "map";
+        tmsg.header.frame_id = map_frame;
         tfBroad->sendTransform(tmsg);
 
         tmsg.transform.translation.x = 0.0;
-        tmsg.child_frame_id = "camera_link";
+        tmsg.child_frame_id = target_frame;
         tmsg.header.frame_id = "mytransform";
         tfBroad->sendTransform(tmsg);
       } else {
         geometry_msgs::msg::TransformStamped tmsg;
         tmsg.header.stamp = this->get_clock()->now();
         tmsg.transform.translation.x = -0.5;
-        tmsg.child_frame_id = "camera_link";
-        tmsg.header.frame_id = "map";
+        tmsg.child_frame_id = target_frame;
+        tmsg.header.frame_id = map_frame;
         tfBroad->sendTransform(tmsg);
+        
       }
       hasInitialized = true;
-    }
+    } else if(!hasInitialized) {
+      geometry_msgs::msg::TransformStamped tmsg;
+      tmsg.header.stamp = this->get_clock()->now();
+      tmsg.transform.translation.x = 0;
+      tmsg.child_frame_id = target_frame;
+      tmsg.header.frame_id = map_frame;
+      tfBroad->sendTransform(tmsg);
+      nav_msgs::msg::Odometry odom;
+      odom.child_frame_id = target_frame;
+      odom.header.frame_id = map_frame;
+      odom.header.stamp = this->get_clock()->now();
+      odom.pose.covariance = {};
+      hasInitialized = true;
+      odomPublisher->publish(odom);
+    } 
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*msg, *temp_cloud);
 
@@ -201,9 +223,9 @@ private:
         // Put point at y=0
         auto point = pos - (pos.y() / dir.y()) * dir;
         
-
+        if(!tf_buffer->canTransform(target_frame, map_frame, tf2::TimePointZero)) return;
         // Find closest corner based off of previous guess
-        auto guess = tf_buffer->lookupTransform("camera_link", "map", tf2::TimePointZero);
+        auto guess = tf_buffer->lookupTransform(target_frame, map_frame, tf2::TimePointZero);
         Eigen::Quaterniond rot_guess(guess.transform.rotation.w,
                                      guess.transform.rotation.x,
                                      guess.transform.rotation.y,
@@ -247,6 +269,8 @@ private:
           case WallType::WEST:
             initial_angle = 0;
             break;
+          case WallType::NONE:
+            return;
         }
         // Get angle from plane
         float theta;
@@ -264,7 +288,7 @@ private:
           geometry_msgs::msg::TransformStamped tmsg;
           tmsg.header.stamp = this->get_clock()->now();
           tmsg.header.frame_id = "/mytransform";
-          tmsg.child_frame_id = "/camera_link";
+          tmsg.child_frame_id = target_frame;
           tmsg.transform.translation.x = -rot_point.y();
           tmsg.transform.translation.y = rot_point.x();
           tmsg.transform.translation.z = 0.0;
@@ -276,7 +300,7 @@ private:
 
           geometry_msgs::msg::TransformStamped tmsg2;
           // tmsg.header.stamp = this->get_clock()->now();
-          tmsg.header.frame_id = "/map";
+          tmsg.header.frame_id = map_frame;
           tmsg.child_frame_id = "/mytransform";
           tmsg.transform.translation.x = best_guess.x();
           tmsg.transform.translation.y = best_guess.z();
@@ -289,8 +313,8 @@ private:
         } else {
           geometry_msgs::msg::TransformStamped tmsg;
           tmsg.header.stamp = this->get_clock()->now();
-          tmsg.header.frame_id = "/map";
-          tmsg.child_frame_id = "/camera_link";
+          tmsg.header.frame_id = map_frame;
+          tmsg.child_frame_id = target_frame;
           tmsg.transform.translation.x = -rot_point.y() + best_guess.x();
           tmsg.transform.translation.y = rot_point.x() + best_guess.z();
           tmsg.transform.translation.z = 0.0;
@@ -298,7 +322,32 @@ private:
           tmsg.transform.rotation.x = new_rot.x();
           tmsg.transform.rotation.y = new_rot.y();
           tmsg.transform.rotation.z = new_rot.z();
-          tfBroad->sendTransform(tmsg);
+          if(publish_transform) {
+            tfBroad->sendTransform(tmsg);
+          }
+
+          nav_msgs::msg::Odometry odom;
+          odom.child_frame_id = target_frame;
+          odom.header.frame_id = map_frame;
+          odom.header.stamp = this->get_clock()->now();
+          // Assume all variable are independent from each other,
+          // Therefore, covariance will be diagonal
+          // Since we are assuming a 2d model, z, roll, and pitch have
+          // zero covariance
+          odom.pose.covariance = { 0.02,   0,   0,   0,   0,    0,
+                                   0,   0.02,   0,   0,   0,    0,
+                                   0,      0,   0,   0,   0,    0,
+                                   0,      0,   0,   0,   0,    0,
+                                   0,      0,   0,   0,   0,    0,
+                                   0,      0,   0,   0,   0, 0.20};
+          odom.pose.pose.orientation = tmsg.transform.rotation;
+          odom.pose.pose.position.x = tmsg.transform.translation.x;
+          odom.pose.pose.position.y = tmsg.transform.translation.y;
+          odom.pose.pose.position.z = tmsg.transform.translation.z;
+
+          // Velocities are not calculated, so just zero everything out
+          odom.twist.covariance = {};
+          odomPublisher->publish(odom);
         }
       }
     }

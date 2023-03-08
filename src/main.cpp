@@ -21,6 +21,7 @@
 #include <pcl/common/intersections.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
 /*#include <pcl/features/normal_3d.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/features/organized_edge_detection.h>*/
@@ -36,10 +37,10 @@ enum class WallType
 
 using PointT = pcl::PointXYZRGB;
 using namespace std::chrono_literals;
-// using namespace std::placeholders;
+std::string out_cloud_name = "/mycloud";
+std::string in_cloud_name = "/camera/depth/color/points";
 
-/* This example creates a subclass of Node and uses std::bind() to register a
- * member function as a callback from the timer. */
+
 
 class MinimalPublisher : public rclcpp::Node
 {
@@ -48,10 +49,10 @@ public:
       : Node("minimal_publisher"), count_(0)
   {
     hasInitialized = false;
-    publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/mycloud", 10);
+    publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(out_cloud_name, 10);
     tfBroad = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-    pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>("/camera/depth/color/points",
+    pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(in_cloud_name,
                                                                              10, std::bind(&MinimalPublisher::pc_callback, this, std::placeholders::_1));
     tf_buffer =
         std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -72,19 +73,18 @@ private:
     Eigen::Vector3f trans_guess(guess.transform.translation.x,
                                 guess.transform.translation.y,
                                 guess.transform.translation.z);
-    Eigen::Vector3f pos_guess = rot_guess * norm;
-    Eigen::Vector3f localX = rot_guess * Eigen::Vector3f{1.0, 0.0, 0.0};
-    Eigen::Vector3f localY = rot_guess * Eigen::Vector3f{0.0, 1.0, 0.0};
+    Eigen::Vector3f norm_transform = {-norm.z(), norm.x(), 0.0};
+    Eigen::Vector3f pos_guess = rot_guess.conjugate() * norm_transform;
     if(fabs(pos_guess.y()) < fabs(pos_guess.x())) {
       // Either north or south wall
-      if((pos_guess*d).dot(localX)  > 0) {
-        return WallType::SOUTH;
-      } else {
+      if((pos_guess*d).x()  > 0) {
         return WallType::NORTH;
+      } else {
+        return WallType::SOUTH;
       }
     } else {
       // Either east or west
-      if((pos_guess*d).dot(localY) > 0) {
+      if((pos_guess*d).y() > 0) {
         return WallType::WEST;
       } else {
         return WallType::EAST;
@@ -172,7 +172,7 @@ private:
     {
       std::partial_sort(coefficients_list.begin(),
                         coefficients_list.begin() + 2, end, [](auto a, auto b)
-                        { return a.first > b.first; });
+                        { return a.first < b.first; });
       auto coeffA = coefficients_list[0];
       auto coeffB = coefficients_list[1];
       Eigen::VectorXd line;
@@ -201,14 +201,13 @@ private:
                                     guess.transform.translation.z);
         Eigen::Vector3d pos_guess = rot_guess * point + trans_guess;
         Eigen::Vector3d best_guess;
-        double minDist = 999999;
         WallType wallA = classifyWallType(a);
         WallType wallB = classifyWallType(b);
         bool hasNorth = wallA == WallType::NORTH || wallB == WallType::NORTH;
         bool hasSouth = wallA == WallType::SOUTH || wallB == WallType::SOUTH;
         bool hasEast = wallA == WallType::EAST || wallB == WallType::EAST;
         bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
-
+        std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
         if(hasNorth && hasEast) {
           best_guess = {1.17 / 2, 0.0, -2.34 / 2};
         } else if(hasNorth && hasWest) {
@@ -225,27 +224,28 @@ private:
         float initial_angle = 0;
         switch(wallA) {
           case WallType::NORTH:
-            initial_angle = 0;
+            initial_angle = -M_PI/2.0;
             break;
           case WallType::EAST:
-            initial_angle = M_PI/2.0;
+            initial_angle = -M_PI;
             break;
           case WallType::SOUTH:
-            initial_angle = M_PI;
+            initial_angle = -3*M_PI/2;
             break;
           case WallType::WEST:
-            initial_angle = M_PI;
+            initial_angle = 0;
             break;
         }
         // Get angle from plane
         float theta;
         if(fabs(a[0]) > 0) {
           theta = atan2(a[0], a[2]);
-        } else {
-          theta = atan2(-a[0], -a[2]);
         }
-        float new_angle =  theta+initial_angle - M_PI/2;
-        std::cout << "Point: " << point << " " << "Theta: " << theta << "Wall A: " << (int) wallA << "Wall B: " <<(int)wallB <<  std::endl;
+        if(theta > M_PI/2 || theta < -M_PI/2) {
+          theta += M_PI;
+        }
+        float new_angle =  theta+initial_angle + M_PI/2;
+        //std::cout << "Point: " << point << " " << "Theta: " << theta << "Wall A: " << (int) wallA << "Wall B: " <<(int)wallB <<  std::endl;
         Eigen::Quaterniond new_rot (Eigen::AngleAxisd(new_angle, Eigen::Vector3d{0, 0, 1}));
         auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.z(), 0.0};
         geometry_msgs::msg::TransformStamped tmsg;

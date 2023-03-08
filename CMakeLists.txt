@@ -28,6 +28,7 @@ find_package(rosbag2 REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(pcl_conversions REQUIRED)
 
 find_package(Eigen3)
 find_package(PCL REQUIRED)
@@ -71,7 +72,8 @@ ament_target_dependencies(mynode
 	rosbag2
 	std_msgs
 	tf2
-	tf2_eigen)
+	tf2_eigen
+  pcl_conversions)
 target_link_libraries(mynode ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
 
 install(TARGETS

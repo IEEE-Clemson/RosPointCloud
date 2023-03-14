@@ -29,10 +29,6 @@ find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(pcl_conversions REQUIRED)
-<<<<<<< HEAD
-=======
-
->>>>>>> d978324373b2a6c589fe29855874792c82668fe3
 find_package(Eigen3)
 find_package(PCL REQUIRED)
 
@@ -64,7 +60,7 @@ link_directories(
 )
 
 
-add_executable(mynode src/main.cpp)
+add_executable(mynode src/main.cpp src/pointcloudodom.cpp include/mynode/main.h include/mynode/pointcloudodom.h)
 ament_target_dependencies(mynode
 	Eigen3
 	PCL

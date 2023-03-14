@@ -146,7 +146,7 @@ private:
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*msg, *temp_cloud);
 
-    float minY = 0.03;
+    float minY = 0.02;
     float maxY = 0.06;
 
     // FILTER OUTSIDE OF RANGE

@@ -24,7 +24,7 @@ constexpr bool use_seperate_transform = false;
 constexpr bool publish_transform = false;
 inline std::string out_cloud_name = "/mycloud";
 inline std::string in_cloud_name = "/camera/depth/color/points";
-inline std::string target_frame = "camera_link";
+inline std::string target_frame = "camorg";
 inline std::string map_frame = "map";
 inline std::string odom_name = "/pcl/odom";
 

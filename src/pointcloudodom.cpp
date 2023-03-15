@@ -18,6 +18,7 @@
 // #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/common/intersections.h>
+#include <pcl/common/transforms.h>
 
 using PointT = pcl::PointXYZRGB;
 
@@ -34,18 +35,18 @@ using PointT = pcl::PointXYZRGB;
     Eigen::Vector3f trans_guess(guess.transform.translation.x,
                                 guess.transform.translation.y,
                                 guess.transform.translation.z);
-    Eigen::Vector3f norm_transform = {-norm.z(), norm.x(), 0.0};
+    Eigen::Vector3f norm_transform = {norm.x(), norm.y(), 0.0};
     Eigen::Vector3f pos_guess = rot_guess.conjugate() * norm_transform;
     if(fabs(pos_guess.y()) < fabs(pos_guess.x())) {
       // Either north or south wall
-      if((pos_guess*d).x()  > 0) {
+      if((pos_guess*d).x() < 0) {
         return WallType::NORTH;
       } else {
         return WallType::SOUTH;
       }
     } else {
       // Either east or west
-      if((pos_guess*d).y() > 0) {
+      if((pos_guess*d).y() < 0) {
         return WallType::WEST;
       } else {
         return WallType::EAST;
@@ -95,18 +96,26 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
     } 
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*msg, *temp_cloud);
-
-    float minY = 0.00;
-    float maxY = 0.06;
+    pcl::PointCloud<PointT>::Ptr transformed_cloud(new pcl::PointCloud<PointT>);
+    geometry_msgs::msg::TransformStamped camera_rot = ctx.tf_buffer->lookupTransform(target_frame, msg->header.frame_id, tf2::TimePointZero);
+    Eigen::Affine3f cam_trans = Eigen::Affine3f::Identity();
+    cam_trans.rotate(Eigen::Quaternionf(camera_rot.transform.rotation.w,
+                       camera_rot.transform.rotation.x,
+                        camera_rot.transform.rotation.y,
+                         camera_rot.transform.rotation.z));
+    pcl::transformPointCloud(*temp_cloud, *transformed_cloud, cam_trans);
+    float minY = -0.12;
+    float maxY = -0.05;
+        // PUBLISHING
 
     // FILTER OUTSIDE OF RANGE
     pcl::PointCloud<PointT>::Ptr filter_cloud(new pcl::PointCloud<PointT>);
     pcl::ConditionAnd<PointT>::Ptr range_cond(new pcl::ConditionAnd<PointT>());
-    range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("y", pcl::ComparisonOps::GT, minY)));
-    range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("y", pcl::ComparisonOps::LT, maxY)));
+    range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("z", pcl::ComparisonOps::GT, minY)));
+    range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("z", pcl::ComparisonOps::LT, maxY)));
 
     pcl::ConditionalRemoval<PointT> range_filt;
-    range_filt.setInputCloud(temp_cloud);
+    range_filt.setInputCloud(transformed_cloud);
     range_filt.setCondition(range_cond);
     range_filt.filter(*filter_cloud);
 
@@ -119,7 +128,7 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.005);
+    seg.setDistanceThreshold(0.01);
     seg.setInputCloud(filter_cloud);
 
     std::vector<std::pair<size_t, pcl::ModelCoefficients::Ptr>> coefficients_list;
@@ -131,6 +140,7 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
       pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
       seg.setInputCloud(filter_cloud);
       seg.segment(*inliers, *coefficients);
+      if(inliers->indices.size() == 0) break;
       pcl::ExtractIndices<PointT> extract;
       extract.setInputCloud(filter_cloud);
       extract.setIndices(inliers);
@@ -148,15 +158,16 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
       *filter_cloud = *filter_cloud_temp;
     }
 
-    // PUBLISHING
     sensor_msgs::msg::PointCloud2 pubMsg;
     pcl::toROSMsg(*plane_cloud, pubMsg);
-    pubMsg.header.frame_id = msg->header.frame_id;
+    pubMsg.header.frame_id = target_frame;
+    ctx.publisher_->publish(pubMsg);
+
     std::cout << "Found " << coefficients_list.size() << " valid planes" << std::endl;
     // FIND INTERSECTION OF PLANES
     // Find 2 biggest planes
     auto end = std::remove_if(coefficients_list.begin(), coefficients_list.end(), [](auto a)
-                              { return fabs(a.second->values[1]) > 0.3; });
+                              { return fabs(a.second->values[2]) > 0.3; });
     if (end - coefficients_list.begin() >= 2)
     {
       std::partial_sort(coefficients_list.begin(),
@@ -174,10 +185,9 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
       {
         auto pos = line.head<3>();
         auto dir = line.tail<3>();
-        
-        // Put point at y=0
-        auto point = pos - (pos.y() / dir.y()) * dir;
-        
+        // Put point at z=0
+        auto point = pos - (pos.z() / dir.z()) * dir;
+
         if(!ctx.tf_buffer->canTransform(target_frame, map_frame, tf2::TimePointZero)) return;
         // Find closest corner based off of previous guess
         auto guess = ctx.tf_buffer->lookupTransform(target_frame, map_frame, tf2::TimePointZero);
@@ -198,13 +208,13 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
         bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
         std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
         if(hasNorth && hasEast) {
-          best_guess = {1.17 / 2, 0.0, -2.34 / 2};
+          best_guess = {1.17 / 2, -2.34 / 2, 0.0};
         } else if(hasNorth && hasWest) {
-          best_guess = {1.17 / 2, 0.0, 2.34 / 2};
+          best_guess = {1.17 / 2, 2.34 / 2, 0.0};
         } else if(hasSouth && hasEast) {
-          best_guess = {-1.17 / 2, 0.0, -2.34 / 2};
+          best_guess = {-1.17 / 2,  -2.34 / 2, 0.0};
         } else if(hasSouth && hasWest) {
-          best_guess = {-1.17 / 2, 0.0, 2.34 / 2};
+          best_guess = {-1.17 / 2,  2.34 / 2, 0.0};
         } else {
           return;
         }
@@ -213,32 +223,30 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
         float initial_angle = 0;
         switch(wallA) {
           case WallType::NORTH:
-            initial_angle = -M_PI/2.0;
+            initial_angle = 3*M_PI/2.0;
             break;
           case WallType::EAST:
-            initial_angle = -M_PI;
+            initial_angle = 0;
             break;
           case WallType::SOUTH:
-            initial_angle = -3*M_PI/2;
+            initial_angle = M_PI/2;
             break;
           case WallType::WEST:
-            initial_angle = 0;
+            initial_angle = M_PI;
             break;
           case WallType::NONE:
             return;
         }
         // Get angle from plane
         float theta;
-        if(fabs(a[0]) > 0) {
-          theta = atan2(a[0], a[2]);
-        }
+        theta = atan2(a[0], a[1]);
         if(theta > M_PI/2 || theta < -M_PI/2) {
           theta += M_PI;
         }
-        float new_angle =  theta+initial_angle + M_PI/2;
+        float new_angle =  theta+initial_angle;// + M_PI/2;
         //std::cout << "Point: " << point << " " << "Theta: " << theta << "Wall A: " << (int) wallA << "Wall B: " <<(int)wallB <<  std::endl;
         Eigen::Quaterniond new_rot (Eigen::AngleAxisd(new_angle, Eigen::Vector3d{0, 0, 1}));
-        auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.z(), 0.0};
+        auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.y(), 0.0};
         if(use_seperate_transform) {
           geometry_msgs::msg::TransformStamped tmsg;
           tmsg.header.stamp = ctx.get_clock()->now();
@@ -258,7 +266,7 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
           tmsg.header.frame_id = map_frame;
           tmsg.child_frame_id = "/mytransform";
           tmsg.transform.translation.x = best_guess.x();
-          tmsg.transform.translation.y = best_guess.z();
+          tmsg.transform.translation.y = best_guess.y();
           tmsg.transform.translation.z = 0.0;
           tmsg.transform.rotation.w = 1.0;
           tmsg.transform.rotation.x = 0.0;
@@ -270,8 +278,8 @@ void handleOdom(MinimalPublisher& ctx, const sensor_msgs::msg::PointCloud2::Shar
           tmsg.header.stamp = ctx.get_clock()->now();
           tmsg.header.frame_id = map_frame;
           tmsg.child_frame_id = target_frame;
-          tmsg.transform.translation.x = -rot_point.y() + best_guess.x();
-          tmsg.transform.translation.y = rot_point.x() + best_guess.z();
+          tmsg.transform.translation.x = -rot_point.x() + best_guess.x();
+          tmsg.transform.translation.y = -rot_point.y() + best_guess.y();
           tmsg.transform.translation.z = 0.0;
           tmsg.transform.rotation.w = new_rot.w();
           tmsg.transform.rotation.x = new_rot.x();

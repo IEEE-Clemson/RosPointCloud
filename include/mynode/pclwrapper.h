@@ -4,10 +4,11 @@
 #include <pcl/common/common.h>
 #include <pcl/point_types.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-
+#include <rclcpp/rclcpp.hpp>
 using PointT = pcl::PointXYZRGB;
 struct PCLWrapper {
     pcl::PointCloud<PointT>::Ptr transformed_cloud;
+    rclcpp::Time time;
 };
 #else
 struct PCLWrapper;

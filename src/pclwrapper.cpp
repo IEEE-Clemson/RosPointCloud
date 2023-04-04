@@ -12,6 +12,8 @@ void createPCLWrapper(PCLWrapper** wrapper) {
 }
 
 void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+
+    wrapper->time = msg->header.stamp;
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*msg, *temp_cloud);
     pcl::PointCloud<PointT>::Ptr transformed_cloud(new pcl::PointCloud<PointT>);

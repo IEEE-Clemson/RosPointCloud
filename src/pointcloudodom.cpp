@@ -230,7 +230,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
         auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.y(), 0.0};
         if(use_seperate_transform) {
           geometry_msgs::msg::TransformStamped tmsg;
-          tmsg.header.stamp = ctx.get_clock()->now();
+          tmsg.header.stamp = wrapper->time;
           tmsg.header.frame_id = "/mytransform";
           tmsg.child_frame_id = target_frame;
           tmsg.transform.translation.x = -rot_point.y();
@@ -256,7 +256,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           ctx.tfBroad->sendTransform(tmsg);
         } else {
           geometry_msgs::msg::TransformStamped tmsg;
-          tmsg.header.stamp = ctx.get_clock()->now();
+          tmsg.header.stamp = wrapper->time;
           tmsg.header.frame_id = map_frame;
           tmsg.child_frame_id = target_frame;
           tmsg.transform.translation.x = -rot_point.x() + best_guess.x();
@@ -273,7 +273,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           nav_msgs::msg::Odometry odom;
           odom.child_frame_id = target_frame;
           odom.header.frame_id = map_frame;
-          odom.header.stamp = ctx.get_clock()->now();
+          odom.header.stamp = wrapper->time;
           // Assume all variable are independent from each other,
           // Therefore, covariance will be diagonal
           // Since we are assuming a 2d model, z, roll, and pitch have

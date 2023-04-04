@@ -1,5 +1,6 @@
 #include "mynode/main.h"
 #include "mynode/pointcloudodom.h"
+#include "mynode/duckfinder.h"
 
 #define DO_NOT_INCLUDE_STRUCT
 #include "mynode/pclwrapper.h"
@@ -22,7 +23,8 @@ MinimalPublisher::MinimalPublisher() : Node("minimal_publisher"), count_(0)
 
 void MinimalPublisher::pc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   transformCloud(*this, wrapper, msg);
-  handleOdom(*this, wrapper); 
+  handleOdom(*this, wrapper);
+  handleObjects(*this, wrapper);
 }
 
 

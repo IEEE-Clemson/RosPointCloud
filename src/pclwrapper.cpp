@@ -22,7 +22,7 @@ void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msg
                         camera_rot.transform.rotation.y,
                          camera_rot.transform.rotation.z));
     pcl::transformPointCloud(*temp_cloud, *transformed_cloud, cam_trans);
-    float minY = -0.12;
+    float minY = -0.16;
     float maxY = -0.05;
 
     // FILTER OUTSIDE OF RANGE

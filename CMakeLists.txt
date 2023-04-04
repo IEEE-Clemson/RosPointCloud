@@ -60,7 +60,14 @@ link_directories(
 )
 
 
-add_executable(mynode src/main.cpp src/pointcloudodom.cpp include/mynode/main.h include/mynode/pointcloudodom.h)
+add_executable(mynode src/main.cpp 
+                      src/pointcloudodom.cpp
+                      src/duckfinder.cpp
+                      src/pclwrapper.cpp
+                      include/mynode/main.h
+                      include/mynode/pclwrapper.h
+                      include/mynode/pointcloudodom.h
+                      include/mynode/duckfinder.h)
 ament_target_dependencies(mynode
 	Eigen3
 	PCL

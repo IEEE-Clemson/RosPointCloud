@@ -1,8 +1,28 @@
 #include "mynode/main.h"
 #include "mynode/pointcloudodom.h"
 
+#define DO_NOT_INCLUDE_STRUCT
+#include "mynode/pclwrapper.h"
+
+MinimalPublisher::MinimalPublisher() : Node("minimal_publisher"), count_(0)
+  {
+    hasInitialized = false;
+    publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(out_cloud_name, 10);
+    odomPublisher = this->create_publisher<nav_msgs::msg::Odometry>(odom_name, 10);
+    tfBroad = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(in_cloud_name,
+                                                                             10, std::bind(&MinimalPublisher::pc_callback, this, std::placeholders::_1));
+    tf_buffer =
+        std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tf_listener =
+        std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+    createPCLWrapper(&wrapper);
+  }
+
 void MinimalPublisher::pc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  handleOdom(*this, msg); 
+  transformCloud(*this, wrapper, msg);
+  handleOdom(*this, wrapper); 
 }
 
 

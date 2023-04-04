@@ -28,26 +28,15 @@ inline std::string target_frame = "camorg";
 inline std::string map_frame = "map";
 inline std::string odom_name = "/pcl/odom";
 
+struct PCLWrapper;
 
 class MinimalPublisher : public rclcpp::Node
 {
 public:
-  MinimalPublisher()
-      : Node("minimal_publisher"), count_(0)
-  {
-    hasInitialized = false;
-    publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(out_cloud_name, 10);
-    odomPublisher = this->create_publisher<nav_msgs::msg::Odometry>(odom_name, 10);
-    tfBroad = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-    pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(in_cloud_name,
-                                                                             10, std::bind(&MinimalPublisher::pc_callback, this, std::placeholders::_1));
-    tf_buffer =
-        std::make_unique<tf2_ros::Buffer>(this->get_clock());
-    tf_listener =
-        std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-  }
+  MinimalPublisher();
   void pc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+
+  PCLWrapper *wrapper;
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroad;

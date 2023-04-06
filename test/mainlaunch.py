@@ -65,7 +65,7 @@ def generate_launch_description():
                 package='tf2_ros',
                 executable='static_transform_publisher',
                 output='screen',
-                arguments=["0", "0.05", "0", "0", "0", "0", "camorg", "drivetrain_link"]
+                arguments=["0.025", "0.04", "0", "0", "0", "0", "camorg", "drivetrain_link"]
         ),
         Node(
                 package='tf2_ros',

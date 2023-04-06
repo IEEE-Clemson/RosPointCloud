@@ -13,7 +13,7 @@ MinimalPublisher::MinimalPublisher() : Node("minimal_publisher"), count_(0)
     tfBroad = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     pc_subscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(in_cloud_name,
-                                                                             10, std::bind(&MinimalPublisher::pc_callback, this, std::placeholders::_1));
+                                                                             1, std::bind(&MinimalPublisher::pc_callback, this, std::placeholders::_1));
     tf_buffer =
         std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener =

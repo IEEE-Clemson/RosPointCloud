@@ -17,7 +17,6 @@ void handleObjects(MinimalPublisher &ctx, PCLWrapper *wrapper)
   // FILTER OUTSIDE OF RANGE
   pcl::ConditionAnd<HSVPoint>::Ptr range_cond(new pcl::ConditionAnd<HSVPoint>());
   //range_cond->addComparison(pcl::FieldComparison<HSVPoint>::Ptr(new pcl::FieldComparison<HSVPoint>("s", pcl::ComparisonOps::GT, 0)));
-  std::cout << hsv_cloud.get()->points[0].v << std::endl;
   range_cond->addComparison(pcl::FieldComparison<HSVPoint>::Ptr(new pcl::FieldComparison<HSVPoint>("s", pcl::ComparisonOps::LT, 0.2)));
   range_cond->addComparison(pcl::FieldComparison<HSVPoint>::Ptr(new pcl::FieldComparison<HSVPoint>("v", pcl::ComparisonOps::GT, 0.5)));
   //range_cond->addComparison(pcl::FieldComparison<HSVPoint>::Ptr(new pcl::FieldComparison<HSVPoint>("v", pcl::ComparisonOps::LT, maxY)));
@@ -40,11 +39,11 @@ void handleObjects(MinimalPublisher &ctx, PCLWrapper *wrapper)
   ec.setSearchMethod(tree);
   ec.setInputCloud(filtered_hsv);
   ec.extract(cluster_indices);
-  std::cout << "here" << std::endl;
+  //std::cout << "here" << std::endl;
   for(const auto& cluster : cluster_indices) {
     Eigen::Vector4d centroid;
     pcl::compute3DCentroid(*filtered_hsv, cluster, centroid);
-    std::cout << "centroid: " << centroid << std::endl;
+    //std::cout << "centroid: " << centroid << std::endl;
   }
-  std::cout << std::endl << std::endl;
+  //std::cout << std::endl << std::endl;
 }

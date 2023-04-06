@@ -87,14 +87,14 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
       tmsg.transform.translation.x = 0;
       tmsg.child_frame_id = target_frame;
       tmsg.header.frame_id = map_frame;
-      ctx.tfBroad->sendTransform(tmsg);
+      //ctx.tfBroad->sendTransform(tmsg);
       nav_msgs::msg::Odometry odom;
       odom.child_frame_id = target_frame;
       odom.header.frame_id = map_frame;
       odom.header.stamp = ctx.get_clock()->now();
       odom.pose.covariance = {};
       ctx.hasInitialized = true;
-      ctx.odomPublisher->publish(odom);
+      //ctx.odomPublisher->publish(odom);
     } 
     
 
@@ -144,7 +144,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
     pubMsg.header.frame_id = target_frame;
     ctx.publisher_->publish(pubMsg);
 
-    std::cout << "Found " << coefficients_list.size() << " valid planes" << std::endl;
+    //std::cout << "Found " << coefficients_list.size() << " valid planes" << std::endl;
     // FIND INTERSECTION OF PLANES
     // Find 2 biggest planes
     auto end = std::remove_if(coefficients_list.begin(), coefficients_list.end(), [](auto a)
@@ -187,7 +187,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
         bool hasSouth = wallA == WallType::SOUTH || wallB == WallType::SOUTH;
         bool hasEast = wallA == WallType::EAST || wallB == WallType::EAST;
         bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
-        std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
+        //std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
         if(hasNorth && hasEast) {
           best_guess = {1.17 / 2, -2.34 / 2, 0.0};
         } else if(hasNorth && hasWest) {
@@ -278,20 +278,25 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           // Therefore, covariance will be diagonal
           // Since we are assuming a 2d model, z, roll, and pitch have
           // zero covariance
-          odom.pose.covariance = { 0.02,   0,   0,   0,   0,    0,
-                                   0,   0.02,   0,   0,   0,    0,
+          odom.pose.covariance = { 0.0004,   0,   0,   0,   0,    0,
+                                   0,   0.0004,   0,   0,   0,    0,
                                    0,      0,   0,   0,   0,    0,
                                    0,      0,   0,   0,   0,    0,
                                    0,      0,   0,   0,   0,    0,
-                                   0,      0,   0,   0,   0, 0.20};
+                                   0,      0,   0,   0,   0, 0.04};
           odom.pose.pose.orientation = tmsg.transform.rotation;
-          odom.pose.pose.position.x = tmsg.transform.translation.x;
-          odom.pose.pose.position.y = tmsg.transform.translation.y;
-          odom.pose.pose.position.z = tmsg.transform.translation.z;
-
-          // Velocities are not calculated, so just zero everything out
-          odom.twist.covariance = {};
-          ctx.odomPublisher->publish(odom);
+          if(!isnan(tmsg.transform.translation.x) && !isnan(tmsg.transform.translation.y) && !isnan(tmsg.transform.translation.z)) {
+            odom.pose.pose.position.x = tmsg.transform.translation.x;
+            odom.pose.pose.position.y = tmsg.transform.translation.y;
+            odom.pose.pose.position.z = tmsg.transform.translation.z;
+            // Verify we are in the bounds of the field
+            if(fabs(tmsg.transform.translation.x) < 1.3 && fabs(tmsg.transform.translation.y) < 2.4) {
+              // Velocities are not calculated, so just zero everything out
+              odom.twist.covariance = {};
+              ctx.odomPublisher->publish(odom);
+              std::cout << "Published " << odom.header.stamp.sec << std::endl;
+            }
+          }
         }
       }
     }

@@ -156,12 +156,53 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
                         { return a.first > b.first; });
       auto coeffA = coefficients_list[0];
       auto coeffB = coefficients_list[1];
-      Eigen::VectorXd line;
+      
       Eigen::Vector4f a(coeffA.second->values.data());
       Eigen::Vector4f b(coeffB.second->values.data());
       // Verify the orthogonality of these planes
+      
       bool orthogonal = fabs(a.head<3>().dot(b.head<3>())) < 0.2;
+
+      WallType wallA = classifyWallType(ctx, a);
+      WallType wallB = classifyWallType(ctx, b);
+      bool hasNorth, hasSouth, hasEast, hasWest;
+      // Wall for determining x position (East and West)
+      Eigen::Vector4f xWall;
+      // Wall for determining y position (North and South)
+      Eigen::Vector4f yWall;
+      if(wallA == WallType::NORTH) {
+        hasNorth = true;
+        yWall = a;
+      }
+      if(wallB == WallType::NORTH) {
+        hasNorth = true;
+        yWall = b;
+      }
+      bool hasNorth = wallA == WallType::NORTH || wallB == WallType::NORTH;
+      bool hasSouth = wallA == WallType::SOUTH || wallB == WallType::SOUTH;
+      bool hasEast = wallA == WallType::EAST || wallB == WallType::EAST;
+      bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
+      Eigen::Vector3d best_guess;
+
+      std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
+
+      if(hasNorth && hasEast) {
+        best_guess = {1.17 / 2, -2.34 / 2, 0.0};
+      } else if(hasNorth && hasWest) {
+        best_guess = {1.17 / 2, 2.34 / 2, 0.0};
+      } else if(hasSouth && hasEast) {
+        best_guess = {-1.17 / 2,  -2.34 / 2, 0.0};
+      } else if(hasSouth && hasWest) {
+        best_guess = {-1.17 / 2,  2.34 / 2, 0.0};
+      } else {
+        return;
+      }
+
+      Eigen::VectorXd line;
       bool couldFind = pcl::planeWithPlaneIntersection(a.cast<double>(), b.cast<double>(), line);
+
+      // Find Min distance from wall A to robot
+
       if (couldFind && orthogonal)
       {
         auto pos = line.head<3>();
@@ -180,25 +221,6 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
                                     guess.transform.translation.y,
                                     guess.transform.translation.z);
         Eigen::Vector3d pos_guess = rot_guess * point + trans_guess;
-        Eigen::Vector3d best_guess;
-        WallType wallA = classifyWallType(ctx, a);
-        WallType wallB = classifyWallType(ctx, b);
-        bool hasNorth = wallA == WallType::NORTH || wallB == WallType::NORTH;
-        bool hasSouth = wallA == WallType::SOUTH || wallB == WallType::SOUTH;
-        bool hasEast = wallA == WallType::EAST || wallB == WallType::EAST;
-        bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
-        std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
-        if(hasNorth && hasEast) {
-          best_guess = {1.17 / 2, -2.34 / 2, 0.0};
-        } else if(hasNorth && hasWest) {
-          best_guess = {1.17 / 2, 2.34 / 2, 0.0};
-        } else if(hasSouth && hasEast) {
-          best_guess = {-1.17 / 2,  -2.34 / 2, 0.0};
-        } else if(hasSouth && hasWest) {
-          best_guess = {-1.17 / 2,  2.34 / 2, 0.0};
-        } else {
-          return;
-        }
 
         // Wall A is largest, compute orientation based off of it
         float initial_angle = 0;

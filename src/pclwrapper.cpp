@@ -18,13 +18,7 @@ void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msg
 
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*msg, *temp_cloud);
-    pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr transformed_cloud(new pcl::PointCloud<PointT>);
-
-    pcl::VoxelGrid<PointT> sor;
-    sor.setInputCloud (temp_cloud);
-    sor.setLeafSize (0.01f, 0.01f, 0.01f);
-    sor.filter (*cloud_filtered);
 
     geometry_msgs::msg::TransformStamped camera_rot = ctx.tf_buffer->lookupTransform(target_frame, msg->header.frame_id, tf2::TimePointZero);
     Eigen::Affine3f cam_trans = Eigen::Affine3f::Identity();
@@ -32,7 +26,7 @@ void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msg
                        camera_rot.transform.rotation.x,
                         camera_rot.transform.rotation.y,
                          camera_rot.transform.rotation.z));
-    pcl::transformPointCloud(*cloud_filtered, *transformed_cloud, cam_trans);
+    pcl::transformPointCloud(*temp_cloud, *transformed_cloud, cam_trans);
     float minY = -0.14;
     float maxY = -0.08;
 

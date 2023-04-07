@@ -165,23 +165,46 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
 
       WallType wallA = classifyWallType(ctx, a);
       WallType wallB = classifyWallType(ctx, b);
-      bool hasNorth, hasSouth, hasEast, hasWest;
+      bool hasNorth = false, hasSouth = false, hasEast = false, hasWest = false;
       // Wall for determining x position (East and West)
       Eigen::Vector4f xWall;
       // Wall for determining y position (North and South)
       Eigen::Vector4f yWall;
       if(wallA == WallType::NORTH) {
         hasNorth = true;
-        yWall = a;
+        xWall = a;
       }
       if(wallB == WallType::NORTH) {
         hasNorth = true;
+        xWall = b;
+      }
+
+      if(wallA == WallType::SOUTH) {
+        hasSouth = true;
+        xWall = a;
+      }
+      if(wallB == WallType::SOUTH) {
+        hasSouth = true;
+        xWall = b;
+      }
+
+      if(wallA == WallType::EAST) {
+        hasEast = true;
+        yWall = a;
+      }
+      if(wallB == WallType::EAST) {
+        hasEast = true;
         yWall = b;
       }
-      bool hasNorth = wallA == WallType::NORTH || wallB == WallType::NORTH;
-      bool hasSouth = wallA == WallType::SOUTH || wallB == WallType::SOUTH;
-      bool hasEast = wallA == WallType::EAST || wallB == WallType::EAST;
-      bool hasWest = wallA == WallType::WEST || wallB == WallType::WEST;
+
+      if(wallA == WallType::WEST) {
+        hasWest = true;
+        yWall = a;
+      }
+      if(wallB == WallType::WEST) {
+        hasWest = true;
+        yWall = b;
+      }
       Eigen::Vector3d best_guess;
 
       std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
@@ -198,17 +221,19 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
         return;
       }
 
-      Eigen::VectorXd line;
-      bool couldFind = pcl::planeWithPlaneIntersection(a.cast<double>(), b.cast<double>(), line);
 
-      // Find Min distance from wall A to robot
-
-      if (couldFind && orthogonal)
+      if (orthogonal)
       {
-        auto pos = line.head<3>();
-        auto dir = line.tail<3>();
+        auto locX = xWall.head<3>()*xWall[3];
+        double dX = hypot(locX.x(), locX.y());
+
+        auto locY = yWall.head<3>()*yWall[3];
+        double dY = hypot(locY.x(), locY.y());
+        best_guess.y() += (hasEast?1:-1)*dY;
+        best_guess.x() += (hasSouth?1:-1)*dX;
+        std::cout << best_guess << std::endl;
         // Put point at z=0
-        auto point = pos - (pos.z() / dir.z()) * dir;
+        auto point = best_guess;
 
         if(!ctx.tf_buffer->canTransform(target_frame, map_frame, tf2::TimePointZero)) return;
         // Find closest corner based off of previous guess
@@ -221,7 +246,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
                                     guess.transform.translation.y,
                                     guess.transform.translation.z);
         Eigen::Vector3d pos_guess = rot_guess * point + trans_guess;
-
+        
         // Wall A is largest, compute orientation based off of it
         float initial_angle = 0;
         switch(wallA) {
@@ -240,6 +265,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           case WallType::NONE:
             return;
         }
+        std::cout << "here2" << std::endl;
         // Get angle from plane
         float theta;
         theta = atan2(a[0], a[1]);
@@ -249,14 +275,13 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
         float new_angle =  theta+initial_angle;// + M_PI/2;
         //std::cout << "Point: " << point << " " << "Theta: " << theta << "Wall A: " << (int) wallA << "Wall B: " <<(int)wallB <<  std::endl;
         Eigen::Quaterniond new_rot (Eigen::AngleAxisd(new_angle, Eigen::Vector3d{0, 0, 1}));
-        auto rot_point = new_rot*Eigen::Vector3d{point.x(), point.y(), 0.0};
         if(use_seperate_transform) {
           geometry_msgs::msg::TransformStamped tmsg;
           tmsg.header.stamp = wrapper->time;
           tmsg.header.frame_id = "/mytransform";
           tmsg.child_frame_id = target_frame;
-          tmsg.transform.translation.x = -rot_point.y();
-          tmsg.transform.translation.y = rot_point.x();
+          tmsg.transform.translation.x = point.x();//-rot_point.y();
+          tmsg.transform.translation.y = point.y();//rot_point.x();
           tmsg.transform.translation.z = 0.0;
           tmsg.transform.rotation.w = new_rot.w();
           tmsg.transform.rotation.x = new_rot.x();
@@ -281,8 +306,8 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           tmsg.header.stamp = wrapper->time;
           tmsg.header.frame_id = map_frame;
           tmsg.child_frame_id = target_frame;
-          tmsg.transform.translation.x = -rot_point.x() + best_guess.x();
-          tmsg.transform.translation.y = -rot_point.y() + best_guess.y();
+          tmsg.transform.translation.x = best_guess.x();//-rot_point.x() + best_guess.x();
+          tmsg.transform.translation.y = best_guess.y(); //-rot_point.y() + best_guess.y();
           tmsg.transform.translation.z = 0.0;
           tmsg.transform.rotation.w = new_rot.w();
           tmsg.transform.rotation.x = new_rot.x();

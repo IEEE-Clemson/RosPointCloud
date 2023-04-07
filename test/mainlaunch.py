@@ -79,6 +79,6 @@ def generate_launch_description():
                 executable='static_transform_publisher',
                 output='screen',
                 name='camorg',
-                arguments=["0", "0", "0", "0", "0.294", "0", "/camorg", "/camera_link"]
+                arguments=["0", "0", "0", "0", "0.349", "0", "/camorg", "/camera_link"]
         ),
     ])

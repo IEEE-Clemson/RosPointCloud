@@ -18,6 +18,11 @@ MinimalPublisher::MinimalPublisher() : Node("minimal_publisher"), count_(0)
         std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener =
         std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+    duckHeadPose = this->create_publisher<geometry_msgs::msg::PoseArray>("/pcl/duckheads", 10);
+    flippedDuckPose = this->create_publisher<geometry_msgs::msg::PoseArray>("/pcl/flippedducks", 10);
+    redCylinderPose = this->create_publisher<geometry_msgs::msg::PoseArray>("/pcl/redCylinderPose", 10);
+    greenCylinderPose = this->create_publisher<geometry_msgs::msg::PoseArray>("/pcl/greenCylinderPose", 10);
+    whiteCylinderPose = this->create_publisher<geometry_msgs::msg::PoseArray>("/pcl/whiteCylinderPose", 10);
     createPCLWrapper(&wrapper);
   }
 

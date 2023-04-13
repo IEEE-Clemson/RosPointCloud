@@ -39,14 +39,14 @@ def generate_launch_description():
             namespace='camera',
             parameters=[{'enable_gyro': True, 'enable_pose': True, 'enable_accel': True, 'unite_imu_method': 2, 'pointcloud.enable': True, 'pointcloud.stream_filter': 2, 'align_depth.enable': True, 'linear_accel_cov': 1.0,
                 'rgb_camera.enable_auto_exposure': False,
-                'rgb_camera.exposure': 50,
-                'rgb_camera.gain': 4096,
-                'depth_module.min_distance': 150,
+                'rgb_camera.exposure': 800,
+                'rgb_camera.gain': 450,
+                'depth_module.min_distance': 230,
                 'depth_module.laser_power': 100,
                 'depth_module.confidence_threshold': 3,
                 'depth_module.profile': "320x240x30",
                 'rgb_camera.profile': "640x360x6",
-                'initial_reset': True,
+                #'initial_reset': True,
                 }],
         ),
         #Node(
@@ -79,6 +79,13 @@ def generate_launch_description():
                 executable='static_transform_publisher',
                 output='screen',
                 name='camorg',
-                arguments=["0", "0", "0", "0", "0.349", "0", "/camorg", "/camera_link"]
+                arguments=["0", "0", "0", "0", "0.31", "-0.01", "/camorg", "/camera_link"]
+        ),
+        Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                output='screen',
+                name='camorg',
+                arguments=["-0.1", "0", "0", "0", "0", "0", "drivetrain_link", "pedestal_stacker"]
         ),
     ])

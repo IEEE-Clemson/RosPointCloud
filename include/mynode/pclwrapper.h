@@ -5,7 +5,7 @@
 #include <pcl/point_types.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
-using PointT = pcl::PointXYZRGB;
+using PointT = pcl::PointXYZHSV;
 struct PCLWrapper {
     pcl::PointCloud<PointT>::Ptr transformed_cloud;
     rclcpp::Time time;

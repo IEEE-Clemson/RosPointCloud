@@ -4,8 +4,10 @@
 #include <tf2_ros/buffer.h>
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/bool.hpp>
 //#include <pcl/common/common.h>
 
 enum class WallType
@@ -44,6 +46,11 @@ public:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odomPublisher;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr duckHeadPose;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr flippedDuckPose;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr greenCylinderPose;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr redCylinderPose;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr whiteCylinderPose;
   size_t count_;
   bool hasInitialized;
 };

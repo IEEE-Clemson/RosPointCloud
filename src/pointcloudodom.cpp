@@ -95,8 +95,37 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
       odom.pose.covariance = {};
       ctx.hasInitialized = true;
       ctx.odomPublisher->publish(odom);
-    } 
+    }
+
+    // Filter for color of walls
+
+    pcl::ConditionAnd<PointT>::Ptr range1(new pcl::ConditionAnd<PointT>());
+    //range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("s", pcl::ComparisonOps::GT, 0)));
+    range1->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("h", pcl::ComparisonOps::LT, 40)));
+    range1->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("h", pcl::ComparisonOps::GT, 20)));
+    range1->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("s", pcl::ComparisonOps::GT, 0.2)));
+    range1->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("v", pcl::ComparisonOps::LT, 0.8)));
+
+    pcl::ConditionAnd<PointT>::Ptr range2(new pcl::ConditionAnd<PointT>());
+    //range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("s", pcl::ComparisonOps::GT, 0)));
+    range2->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("h", pcl::ComparisonOps::LT, 60)));
+    range2->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("h", pcl::ComparisonOps::GT, 35)));
+    range2->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("s", pcl::ComparisonOps::GT, 0.2)));
+    range2->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("s", pcl::ComparisonOps::LT, 0.45)));
+    range2->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("v", pcl::ComparisonOps::LT, 0.8)));
     
+
+    pcl::ConditionOr<PointT>::Ptr range_cond(new pcl::ConditionOr<PointT>());
+    range_cond->addCondition(range1);
+    range_cond->addCondition(range2);
+    //range_cond->addComparison(pcl::FieldComparison<PointT>::Ptr(new pcl::FieldComparison<PointT>("v", pcl::ComparisonOps::LT, maxY)));
+
+    pcl::ConditionalRemoval<PointT> range_filt;
+    range_filt.setInputCloud(wrapper->transformed_cloud);
+    range_filt.setCondition(range_cond);
+    pcl::PointCloud<PointT>::Ptr filtered_hsv(new pcl::PointCloud<PointT>);
+    range_filt.filter(*filtered_hsv);
+      
 
     // PLANAR FITTING
     int nr_points = (int)wrapper->transformed_cloud->size();
@@ -105,18 +134,23 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
 
     pcl::SACSegmentation<PointT> seg;
     seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setModelType(pcl::SACMODEL_PARALLEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
     seg.setDistanceThreshold(0.01);
-    seg.setInputCloud(wrapper->transformed_cloud);
+    seg.setInputCloud(filtered_hsv);
+    seg.setAxis({0.0f, 0.0f, 1.0f});
+    seg.setEpsAngle(0.3);
+
+    
 
     std::vector<std::pair<size_t, pcl::ModelCoefficients::Ptr>> coefficients_list;
     pcl::PointCloud<PointT>::Ptr filter_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud(*wrapper->transformed_cloud, *filter_cloud);
+    pcl::copyPointCloud(*filtered_hsv, *filter_cloud);
     pcl::PointCloud<PointT>::Ptr filter_cloud_temp(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr plane_cloud_temp(new pcl::PointCloud<PointT>);
-    while (filter_cloud->size() > 0.1 * nr_points)
+    int i = 0;
+    while (filter_cloud->size() > 0.1 * nr_points && i < 4)
     {
       pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
       seg.setInputCloud(filter_cloud);
@@ -126,7 +160,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
       extract.setInputCloud(filter_cloud);
       extract.setIndices(inliers);
       extract.setNegative(false);
-      if (inliers->indices.size() > 100)
+      if (inliers->indices.size() > 500)
       {
         coefficients_list.push_back({inliers->indices.size(), coefficients});
         extract.filter(*plane_cloud_temp);
@@ -137,6 +171,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
       extract.setNegative(true);
       extract.filter(*filter_cloud_temp);
       *filter_cloud = *filter_cloud_temp;
+      i++;
     }
 
     sensor_msgs::msg::PointCloud2 pubMsg;
@@ -144,11 +179,11 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
     pubMsg.header.frame_id = target_frame;
     ctx.publisher_->publish(pubMsg);
 
-    std::cout << "Found " << coefficients_list.size() << " valid planes" << std::endl;
+    //std::cout << "Found " << coefficients_list.size() << " valid planes" << std::endl;
     // FIND INTERSECTION OF PLANES
     // Find 2 biggest planes
-    auto end = std::remove_if(coefficients_list.begin(), coefficients_list.end(), [](auto a)
-                              { return fabs(a.second->values[2]) > 0.3; });
+    auto end = coefficients_list.end(); //std::remove_if(coefficients_list.begin(), coefficients_list.end(), [](auto a)
+                              //{ return fabs(a.second->values[2]) > 0.3; });
     if (end - coefficients_list.begin() >= 2)
     {
       std::partial_sort(coefficients_list.begin(),
@@ -156,6 +191,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
                         { return a.first > b.first; });
       auto coeffA = coefficients_list[0];
       auto coeffB = coefficients_list[1];
+      //std::cout << coeffA.first << " " << coeffB.first << std::endl;
       
       Eigen::Vector4f a(coeffA.second->values.data());
       Eigen::Vector4f b(coeffB.second->values.data());
@@ -207,7 +243,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
       }
       Eigen::Vector3d best_guess;
 
-      std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
+      //std::cout << "Walls: " << (int)wallA << " " << (int)wallB << std::endl;
 
       if(hasNorth && hasEast) {
         best_guess = {1.17 / 2, -2.34 / 2, 0.0};
@@ -231,7 +267,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
         double dY = hypot(locY.x(), locY.y());
         best_guess.y() += (hasEast?1:-1)*dY;
         best_guess.x() += (hasSouth?1:-1)*dX;
-        std::cout << best_guess << std::endl;
+        //std::cout << best_guess << std::endl;
         // Put point at z=0
         auto point = best_guess;
 
@@ -265,7 +301,7 @@ void handleOdom(MinimalPublisher& ctx, PCLWrapper* wrapper)  {
           case WallType::NONE:
             return;
         }
-        std::cout << "here2" << std::endl;
+        //std::cout << "here2" << std::endl;
         // Get angle from plane
         float theta;
         theta = atan2(a[0], a[1]);

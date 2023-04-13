@@ -6,6 +6,7 @@
 #include "mynode/main.h"
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/point_types_conversion.h>
 
 void createPCLWrapper(PCLWrapper** wrapper) {
     *wrapper = new PCLWrapper;
@@ -16,8 +17,11 @@ void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msg
 
     wrapper->time = msg->header.stamp;
 
-    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromROSMsg(*msg, *temp_cloud);
+    
+    pcl::PointCloud<PointT>::Ptr hsv_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloudXYZRGBtoXYZHSV(*temp_cloud, *hsv_cloud);
     pcl::PointCloud<PointT>::Ptr transformed_cloud(new pcl::PointCloud<PointT>);
 
     geometry_msgs::msg::TransformStamped camera_rot = ctx.tf_buffer->lookupTransform(target_frame, msg->header.frame_id, tf2::TimePointZero);
@@ -26,9 +30,9 @@ void transformCloud(MinimalPublisher& ctx, PCLWrapper* wrapper, const sensor_msg
                        camera_rot.transform.rotation.x,
                         camera_rot.transform.rotation.y,
                          camera_rot.transform.rotation.z));
-    pcl::transformPointCloud(*temp_cloud, *transformed_cloud, cam_trans);
-    float minY = -0.14;
-    float maxY = -0.08;
+    pcl::transformPointCloud(*hsv_cloud, *transformed_cloud, cam_trans);
+    float minY = -0.18;
+    float maxY = -0.13;
 
     // FILTER OUTSIDE OF RANGE
     pcl::ConditionAnd<PointT>::Ptr range_cond(new pcl::ConditionAnd<PointT>());
